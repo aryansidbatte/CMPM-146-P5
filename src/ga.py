@@ -68,11 +68,97 @@ class Individual_Grid(object):
         # STUDENT also consider weighting the different tile types so it's not uniformly random
         # STUDENT consider putting more constraints on this to prevent pipes in the air, etc
 
+        max_height = len(genome)
+        max_width = len(genome[0]) if genome else 0
+
+        mutation_rate = 1.0  # 10% chance to mutate each tile
         left = 1
         right = width - 1
         for y in range(height):
             for x in range(left, right):
-                pass
+                if random.random() < mutation_rate:
+                
+                    if (y + 1 == max_height):
+                        # Ensure ground only mutates into block, pipe, or empty space
+                        new_tile = random.choices(['X', '|', '-'], weights=[3, 1, 2])[0]
+                        genome[y][x] = new_tile
+                    
+                    # Prevent the first and last 5 columns from mutating
+                    elif x in range(0, 5) or x in range(max_width - 5, max_width):
+                        continue
+                        
+                    else:
+                        new_tile = random.choices(options, weights=[4, 3, 3, 2, 4, 5, 3, 3, 1])[0]
+                        genome[y][x] = new_tile
+        return genome
+
+
+    def apply_constraints(genome):
+        max_height = len(genome)
+        max_width = len(genome[0]) if genome else 0
+            
+        for y in range(max_height):
+            for x in range(max_width):
+
+                if y in range(0, 2):
+                    # Keep top of stage a bit clean
+                        genome[y][x] =  "-" # Replace with empty space if not valid
+
+                if x in range(0, 5):
+                    # Allow breathing room at the start of the stage
+                    if genome[y][x] not in ("m", "X"):
+                        genome[y][x] =  "-" # Replace with empty space if not valid
+
+                elif x in range(max_width - 5, max_width):
+                    # Ensure flag and flagpole at the end do not get overwritten and leave space before
+                    if genome[y][x] not in ("f", "v", "X"):
+                        genome[y][x] = "-"  # Replace with empty space if not valid
+
+                elif genome[y][x] in ("X", "?", "M", "B"):
+                    # Ensure blocks are placed on rows that are multiples of 4 from the top of the map
+                    if (max_height - (y + 1)) % 4 != 0 or y == max_height - 2:
+                        genome[y][x] = "-"  # Replace with empty space if not on valid row
+                    else:
+                        # Additional checks can go here if needed
+                        pass   
+
+                elif genome[y][x] in ("|", "T"):
+                    if genome[y - 1][x] in ("|", "T"):
+                        # There is a pipe piece above here, change to | pipe
+                        genome[y][x] = "|"                    
+                    elif genome[y - 2][x] == "-" and genome[y - 2] == "-":
+                        #There is empty space above, change to T pipe
+                        genome[y][x] = "T"
+                    else:
+                        # There is a piece blocking the pipe, change the pipe to an empty space
+                        genome[y][x] = "-"
+
+
+                    if genome[y][x] != "-":
+                        # Check to see if piece is too tall and also touches the ground
+                        ground_found = False
+                        for depth in range(1, 3):
+                            if y + depth >= max_height:
+                                ground_found = True #Depth is okay as piece touches ground
+                                break 
+
+                            if genome[y + depth][x] in ("X", "|"):
+                                # If piece is connected to a straight pipe below continue, otherwise break as piece touches ground
+                                if genome[y + depth][x] == "X":
+                                    ground_found = True
+                                    break
+                            else:
+                                # If tile comes across anything other than the ground or straight piece, break
+                                break
+                        if not ground_found:
+                            genome[y][x] = "-"  # Replace with empty space if not valid
+
+
+                elif genome[y][x] == "E":  # Enemy
+                    # Ensure enemy is positioned on ground or a block
+                    if y + 1 >= max_height or genome[y + 1][x] not in ("X", "?", "M", "B"):
+                        genome[y][x] = "-"  # Replace with empty space if not valid
+
         return genome
 
     # Create zero or more children from self and other
@@ -86,13 +172,29 @@ class Individual_Grid(object):
             for x in range(left, right):
                 # STUDENT Which one should you take?  Self, or other?  Why?
                 # STUDENT consider putting more constraints on this to prevent pipes in the air, etc
-                pass
+                if random.choice([True, False]):
+                    new_genome[y][x] = self.genome[y][x]
+                else:
+                    new_genome[y][x] = other.genome[y][x]
         # do mutation; note we're returning a one-element tuple here
+        new_genome = self.mutate(new_genome)
+        new_genome = Individual_Grid.apply_constraints(new_genome)
         return (Individual_Grid(new_genome),)
 
     # Turn the genome into a level string (easy for this genome)
     def to_level(self):
-        return self.genome
+        """Convert the genome to a level string representation with extra columns of air at the end."""
+        # Create a deep copy of the genome to avoid modifying the original
+        extended_genome = copy.deepcopy(self.genome)
+        extra_columns = 3
+        # Add extra columns at the end
+        for row in extended_genome:
+            row.extend(['-'] * extra_columns)
+
+        # Ensure the floor level is solid throughout
+        extended_genome[height - 1] = ['X'] * (width + extra_columns)
+
+        return extended_genome
 
     # These both start with every floor tile filled with Xs
     # STUDENT Feel free to change these
@@ -168,7 +270,17 @@ class Individual_DE(object):
         penalties = 0
         # STUDENT For example, too many stairs are unaesthetic.  Let's penalize that
         if len(list(filter(lambda de: de[1] == "6_stairs", self.genome))) > 5:
-            penalties -= 2
+            penalties -= 10
+
+        if len(list(filter(lambda de: de[1] == "6_stairs", self.genome))) < 2:
+            penalties -= 10     
+
+        if len(list(filter(lambda de: de[1] == "7_pipe", self.genome))) > 5:
+            penalties -= 10                        
+
+        if len(list(filter(lambda de: de[1] == "7_pipe", self.genome))) < 2:
+            penalties -= 10   
+
         # STUDENT If you go for the FI-2POP extra credit, you can put constraint calculation in here too and cache it in a new entry in __slots__.
         self._fitness = sum(map(lambda m: coefficients[m] * measurements[m],
                                 coefficients)) + penalties
@@ -221,7 +333,7 @@ class Individual_DE(object):
                 if choice < 0.5:
                     x = offset_by_upto(x, width / 8, min=1, max=width - 2)
                 else:
-                    h = offset_by_upto(h, 2, min=2, max=height - 4)
+                    h = offset_by_upto(h, 2, min=2, max=4)
                 new_de = (x, de_type, h)
             elif de_type == "0_hole":
                 w = de[2]
@@ -236,7 +348,7 @@ class Individual_DE(object):
                 if choice < 0.33:
                     x = offset_by_upto(x, width / 8, min=1, max=width - 2)
                 elif choice < 0.66:
-                    h = offset_by_upto(h, 8, min=1, max=height - 4)
+                    h = offset_by_upto(h, 8, min=1, max=4)
                 else:
                     dx = -dx
                 new_de = (x, de_type, h, dx)
@@ -259,18 +371,30 @@ class Individual_DE(object):
             heapq.heappush(new_genome, new_de)
         return new_genome
 
-    def generate_children(self, other):
-        # STUDENT How does this work?  Explain it in your writeup.
+    def generate_children(self, other):        
+        if not self.genome or not other.genome:
+            # If either parent has an empty genome, handle it (e.g., skip, return empty, or handle differently)
+            #print("Warning: Attempted to generate children from an empty genome.")
+            return []
+
+        # Choose how many genomes will be copied over to children for both parents
         pa = random.randint(0, len(self.genome) - 1)
         pb = random.randint(0, len(other.genome) - 1)
+
+        # Splice parents genomes up to the number from pa/pb or return empty if no genomes
         a_part = self.genome[:pa] if len(self.genome) > 0 else []
         b_part = other.genome[pb:] if len(other.genome) > 0 else []
+
+        # Combine the two parts into one
         ga = a_part + b_part
+        
         b_part = other.genome[:pb] if len(other.genome) > 0 else []
         a_part = self.genome[pa:] if len(self.genome) > 0 else []
         gb = b_part + a_part
-        # do mutation
+        
+        # Do mutation
         return Individual_DE(self.mutate(ga)), Individual_DE(self.mutate(gb))
+
 
     # Apply the DEs to a base level.
     def to_level(self):
@@ -340,15 +464,37 @@ class Individual_DE(object):
         return Individual_DE(g)
 
 
-Individual = Individual_Grid
-
+Individual = Individual_DE
 
 def generate_successors(population):
     results = []
     # STUDENT Design and implement this
     # Hint: Call generate_children() on some individuals and fill up results.
-    return results
+    
+    # Sorting population by fitness
+    population.sort(key=Individual.fitness, reverse=True)
+    elite_count = max(1, len(population) // 10)
+    results.extend(population[:elite_count])
 
+    # Generate children from the top-performing individuals
+    while len(results) < len(population):
+        parent1, parent2 = random.sample(population[:elite_count], 2)
+        children = parent1.generate_children(parent2)
+        
+        for child in children:
+            # Calculate fitness and check solvability
+            child.calculate_fitness()
+            metrics_results = metrics.metrics(child.to_level())
+            
+            if metrics_results['solvability'] > 0:
+                results.append(child)
+            else:
+                # Optionally, create a new individual to replace the unsolvable one
+                new_individual = Individual.random_individual()
+                new_individual.calculate_fitness()
+                results.append(new_individual)
+
+    return results[:len(population)]
 
 def ga():
     # STUDENT Feel free to play with this parameter
@@ -388,11 +534,14 @@ def ga():
                         for row in best.to_level():
                             f.write("".join(row) + "\n")
                 generation += 1
-                # STUDENT Determine stopping condition
-                stop_condition = False
+
+                # Implementing the stopping condition based on elapsed time
+                stop_condition = now - start > 30  # Set to a higher value for a longer run
+
                 if stop_condition:
+                    print(f"Stopping condition met: Elapsed time {now - start:.2f} seconds.")
                     break
-                # STUDENT Also consider using FI-2POP as in the Sorenson & Pasquier paper
+
                 gentime = time.time()
                 next_population = generate_successors(population)
                 gendone = time.time()
@@ -407,6 +556,7 @@ def ga():
         except KeyboardInterrupt:
             pass
     return population
+
 
 
 if __name__ == "__main__":
