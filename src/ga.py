@@ -333,7 +333,7 @@ class Individual_DE(object):
                 if choice < 0.5:
                     x = offset_by_upto(x, width / 8, min=1, max=width - 2)
                 else:
-                    h = offset_by_upto(h, 2, min=2, max=4)
+                    h = offset_by_upto(h, 2, min=2, max=height - 4)
                 new_de = (x, de_type, h)
             elif de_type == "0_hole":
                 w = de[2]
@@ -348,7 +348,7 @@ class Individual_DE(object):
                 if choice < 0.33:
                     x = offset_by_upto(x, width / 8, min=1, max=width - 2)
                 elif choice < 0.66:
-                    h = offset_by_upto(h, 8, min=1, max=4)
+                    h = offset_by_upto(h, 8, min=1, max=height - 4)
                 else:
                     dx = -dx
                 new_de = (x, de_type, h, dx)
