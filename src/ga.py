@@ -71,7 +71,7 @@ class Individual_Grid(object):
         max_height = len(genome)
         max_width = len(genome[0]) if genome else 0
 
-        mutation_rate = 1.0  # 10% chance to mutate each tile
+        mutation_rate = 0.2  #20% chance to mutate each tile
         left = 1
         right = width - 1
         for y in range(height):
@@ -271,15 +271,33 @@ class Individual_DE(object):
         # STUDENT For example, too many stairs are unaesthetic.  Let's penalize that
         if len(list(filter(lambda de: de[1] == "6_stairs", self.genome))) > 5:
             penalties -= 10
-
         if len(list(filter(lambda de: de[1] == "6_stairs", self.genome))) < 2:
             penalties -= 10     
 
         if len(list(filter(lambda de: de[1] == "7_pipe", self.genome))) > 5:
             penalties -= 10                        
-
         if len(list(filter(lambda de: de[1] == "7_pipe", self.genome))) < 2:
             penalties -= 10   
+
+        if len(list(filter(lambda de: de[1] == "0_hole", self.genome))) > 7:
+            penalties -= 10                        
+        if len(list(filter(lambda de: de[1] == "0_hole", self.genome))) < 4:
+            penalties -= 10               
+
+        if len(list(filter(lambda de: de[1] == "2_enemy", self.genome))) > 10:
+            penalties -= 20                        
+        if len(list(filter(lambda de: de[1] == "2_enemy", self.genome))) < 5:
+            penalties -= 20  
+
+        if len(list(filter(lambda de: de[1] == "3_coin", self.genome))) > 30:
+            penalties -= 30                        
+        if len(list(filter(lambda de: de[1] == "3_coin", self.genome))) < 15:
+            penalties -= 30 
+
+        if len(list(filter(lambda de: de[1] == "1_platform", self.genome))) > 15:
+            penalties -= 30                        
+        if len(list(filter(lambda de: de[1] == "1_platform", self.genome))) < 10:
+            penalties -= 30                          
 
         # STUDENT If you go for the FI-2POP extra credit, you can put constraint calculation in here too and cache it in a new entry in __slots__.
         self._fitness = sum(map(lambda m: coefficients[m] * measurements[m],
@@ -294,7 +312,7 @@ class Individual_DE(object):
     def mutate(self, new_genome):
         # STUDENT How does this work?  Explain it in your writeup.
         # STUDENT consider putting more constraints on this, to prevent generating weird things
-        if random.random() < 0.1 and len(new_genome) > 0:
+        if random.random() < 0.4 and len(new_genome) > 0:
             to_change = random.randint(0, len(new_genome) - 1)
             de = new_genome[to_change]
             new_de = de
@@ -338,7 +356,7 @@ class Individual_DE(object):
             elif de_type == "0_hole":
                 w = de[2]
                 if choice < 0.5:
-                    x = offset_by_upto(x, width / 8, min=1, max=width - 2)
+                    x = offset_by_upto(x, width / 8, min=1, max=width - 4)
                 else:
                     w = offset_by_upto(w, 4, min=1, max=width - 2)
                 new_de = (x, de_type, w)
@@ -348,7 +366,10 @@ class Individual_DE(object):
                 if choice < 0.33:
                     x = offset_by_upto(x, width / 8, min=1, max=width - 2)
                 elif choice < 0.66:
-                    h = offset_by_upto(h, 8, min=1, max=height - 4)
+                    if dx == 1:
+                        h = offset_by_upto(h, 8, min=1, max=6)
+                    else:
+                        h = offset_by_upto(h, 8, min=1, max=4)
                 else:
                     dx = -dx
                 new_de = (x, de_type, h, dx)
@@ -373,8 +394,7 @@ class Individual_DE(object):
 
     def generate_children(self, other):        
         if not self.genome or not other.genome:
-            # If either parent has an empty genome, handle it (e.g., skip, return empty, or handle differently)
-            #print("Warning: Attempted to generate children from an empty genome.")
+            # If either parent has an empty genome, return empty
             return []
 
         # Choose how many genomes will be copied over to children for both parents
@@ -452,14 +472,14 @@ class Individual_DE(object):
         # STUDENT Maybe enhance this
         elt_count = random.randint(8, 128)
         g = [random.choice([
-            (random.randint(1, width - 2), "0_hole", random.randint(1, 8)),
+            (random.randint(1, width - 2), "0_hole", random.randint(1, 6)),
             (random.randint(1, width - 2), "1_platform", random.randint(1, 8), random.randint(0, height - 1), random.choice(["?", "X", "B"])),
             (random.randint(1, width - 2), "2_enemy"),
             (random.randint(1, width - 2), "3_coin", random.randint(0, height - 1)),
             (random.randint(1, width - 2), "4_block", random.randint(0, height - 1), random.choice([True, False])),
             (random.randint(1, width - 2), "5_qblock", random.randint(0, height - 1), random.choice([True, False])),
-            (random.randint(1, width - 2), "6_stairs", random.randint(1, height - 4), random.choice([-1, 1])),
-            (random.randint(1, width - 2), "7_pipe", random.randint(2, height - 4))
+            (random.randint(1, width - 2), "6_stairs", random.randint(1, 5), random.choice([-1, 1])),
+            (random.randint(1, width - 2), "7_pipe", random.randint(2, 4))
         ]) for i in range(elt_count)]
         return Individual_DE(g)
 
@@ -489,7 +509,7 @@ def generate_successors(population):
             if metrics_results['solvability'] > 0:
                 results.append(child)
             else:
-                # Optionally, create a new individual to replace the unsolvable one
+                # Create a new individual to replace the unsolvable one
                 new_individual = Individual.random_individual()
                 new_individual.calculate_fitness()
                 results.append(new_individual)
@@ -536,7 +556,7 @@ def ga():
                 generation += 1
 
                 # Implementing the stopping condition based on elapsed time
-                stop_condition = now - start > 30  # Set to a higher value for a longer run
+                stop_condition = now - start > 400  # Set to a higher value for a longer run
 
                 if stop_condition:
                     print(f"Stopping condition met: Elapsed time {now - start:.2f} seconds.")
